@@ -91,6 +91,12 @@ const SCALE_FORMULAS = {
   "Melodic Minor Desc":[0,2,3,5,7,8,10],
 };
 
+const CHORD_FORMULAS = {
+  "maj":[0,4,7],"min":[0,3,7],"dim":[0,3,6],"aug":[0,4,8],
+  "maj7":[0,4,7,11],"min7":[0,3,7,10],"dom7":[0,4,7,10],
+  "m7b5":[0,3,6,10],"dim7":[0,3,6,9],"minMaj7":[0,3,7,11],
+  "augMaj7":[0,4,8,11],"aug7":[0,4,8,10],
+};
 const CHORD_DISPLAY = {
   "maj":"","min":"m","dim":"°","aug":"+","maj7":"maj7","min7":"m7","dom7":"7",
   "m7b5":"m7♭5","dim7":"°7","minMaj7":"m(maj7)","augMaj7":"+(maj7)","aug7":"+7",
@@ -131,7 +137,7 @@ function getDiatonicChords(rootNote, familyName, use7ths) {
     const chordRootI = (rootI + entry.semi) % 12;
     const chordRoot = NOTES[chordRootI];
     const type = use7ths ? entry.seventh : entry.triad;
-    return { degree: entry.degree, name: chordRoot + CHORD_DISPLAY[type] };
+    return { degree: entry.degree, name: chordRoot + CHORD_DISPLAY[type], rootIdx: chordRootI, formula: CHORD_FORMULAS[type] };
   });
 }
 
@@ -224,16 +230,16 @@ function Fretboard({ highlights, showIntervals }) {
 }
 
 /* ── Chord grid ── */
-function ChordDisplay({ rootNote, family, use7ths }) {
-  const chords = getDiatonicChords(rootNote, family, use7ths);
+function ChordDisplay({ chords, selected, onSelect }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 16 }}>
       {chords.map((c, i) => (
-        <div key={i} style={{
-          background: "#161a24", border: "1px solid #252b38", borderRadius: 8,
-          padding: "10px 16px", minWidth: 72, textAlign: "center",
+        <div key={i} onClick={() => onSelect(selected === i ? null : i)} style={{
+          background: selected === i ? "#1e2535" : "#161a24",
+          border: selected === i ? "1.5px solid #c8a030" : "1px solid #252b38",
+          borderRadius: 8, padding: "10px 16px", minWidth: 72, textAlign: "center", cursor: "pointer",
         }}>
-          <div style={{ color: "#555", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>{c.degree}</div>
+          <div style={{ color: selected === i ? "#c8a030" : "#555", fontSize: 10, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>{c.degree}</div>
           <div style={{ color: "#c8a030", fontSize: 17, fontWeight: 700 }}>{c.name}</div>
         </div>
       ))}
@@ -267,12 +273,20 @@ export default function App() {
   // Chords tab
   const [chordFamily, setChordFamily] = useState("Major");
   const [use7ths, setUse7ths] = useState(false);
+  const [selectedChord, setSelectedChord] = useState(null);
 
   // Melodic minor tab
   const [melForm, setMelForm] = useState("Asc");
 
   const rootIndex = useMemo(() => noteIdx(keyRoot), [keyRoot]);
   const rootFret  = useMemo(() => rootFretOnLowE(keyRoot), [keyRoot]);
+
+  const chords = useMemo(() => getDiatonicChords(keyRoot, chordFamily, use7ths), [keyRoot, chordFamily, use7ths]);
+  const chordHighlights = useMemo(() => {
+    if (selectedChord === null) return [];
+    const c = chords[selectedChord];
+    return c ? fullNeckHighlights(c.formula, c.rootIdx) : [];
+  }, [selectedChord, chords]);
 
   const scaleTypeKey = scaleVariant === "Major" ? "Major Pentatonic"
     : scaleVariant === "Blues" ? "Blues" : "Minor Pentatonic";
@@ -310,7 +324,7 @@ export default function App() {
 
   const labelStyle = { fontSize: 10, letterSpacing: 2, color: "#555", textTransform: "uppercase", marginBottom: 6 };
 
-  const showFretboard = tab === "pentatonic" || tab === "melodic";
+  const showFretboard = tab === "pentatonic" || tab === "melodic" || (tab === "chords" && selectedChord !== null);
 
   return (
     <main style={{ background: "#0d0f14", color: "#d0d4e0", minHeight: "100vh", fontFamily: "sans-serif" }}>
@@ -335,7 +349,7 @@ export default function App() {
           {/* Root note */}
           <div>
             <div style={labelStyle}>Root Note</div>
-            <select value={keyRoot} onChange={e => setKeyRoot(e.target.value)} style={{
+            <select value={keyRoot} onChange={e => { setKeyRoot(e.target.value); setSelectedChord(null); }} style={{
               background: "#161920", color: "#d0d4e0", border: "1px solid #2a2d35",
               borderRadius: 6, padding: "7px 10px", fontSize: 14, cursor: "pointer",
             }}>
@@ -361,11 +375,11 @@ export default function App() {
                 <div style={labelStyle}>Key Family</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {["Major","Natural Minor","Harmonic Minor","Melodic Minor"].map(f => (
-                    <button key={f} style={btnStyle(chordFamily === f)} onClick={() => setChordFamily(f)}>{f}</button>
+                    <button key={f} style={btnStyle(chordFamily === f)} onClick={() => { setChordFamily(f); setSelectedChord(null); }}>{f}</button>
                   ))}
                 </div>
               </div>
-              <button style={{ ...btnStyle(use7ths), alignSelf: "flex-end" }} onClick={() => setUse7ths(v => !v)}>7ths</button>
+              <button style={{ ...btnStyle(use7ths), alignSelf: "flex-end" }} onClick={() => { setUse7ths(v => !v); setSelectedChord(null); }}>7ths</button>
             </>
           )}
 
@@ -423,7 +437,19 @@ export default function App() {
         )}
 
         {tab === "chords" && (
-          <ChordDisplay rootNote={keyRoot} family={chordFamily} use7ths={use7ths} />
+          <>
+            <ChordDisplay chords={chords} selected={selectedChord} onSelect={setSelectedChord} />
+            {selectedChord !== null && chords[selectedChord] && (
+              <>
+                <Fretboard highlights={chordHighlights} showIntervals={showIntervals} />
+                <div style={{ padding: "10px 14px", background: "#111520", borderRadius: 8,
+                  fontSize: 13, color: "#777", fontFamily: "monospace", lineHeight: 1.5 }}>
+                  {chords[selectedChord].name}: {chords[selectedChord].formula.map(i => INTERVAL_LABELS[i]).join(" – ")}
+                  {" "}({chords[selectedChord].formula.map(i => NOTES[(chords[selectedChord].rootIdx + i) % 12]).join(" – ")})
+                </div>
+              </>
+            )}
+          </>
         )}
 
         {tab === "melodic" && (
