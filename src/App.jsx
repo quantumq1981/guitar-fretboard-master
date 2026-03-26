@@ -149,8 +149,8 @@ function Fretboard({ highlights, showIntervals }) {
   const NUT_X = LABEL_W + OPEN_W;
   const W = NUT_X + FW * SHOW_FRETS + 24;
 
-  // String y positions: string 0 (low E) at top, string 5 (high e) at bottom
-  const sy = s => TOP + s * SY + SY / 2;
+  // String y positions: string 5 (high e) at top, string 0 (low E) at bottom
+  const sy = s => TOP + (5 - s) * SY + SY / 2;
   // Note x positions: fret 0 (open) left of nut, fret f centered between fret lines f-1 and f
   const nx = f => f === 0 ? LABEL_W + OPEN_W / 2 : NUT_X + (f - 0.5) * FW;
 
