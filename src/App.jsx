@@ -1,4 +1,33 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, Component } from "react";
+
+// ── Error Boundary ────────────────────────────────────────────────────
+// Prevents a JS error in any module from crashing the entire app.
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 32, textAlign: "center", color: "#e84040", fontFamily: "monospace" }}>
+          <div style={{ fontSize: 18, marginBottom: 8 }}>Something went wrong in this module.</div>
+          <div style={{ fontSize: 12, color: "#7a8099", marginBottom: 16 }}>{String(this.state.error)}</div>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #e84040", background: "transparent", color: "#e84040", cursor: "pointer" }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // GUITAR FRETBOARD MASTERY SUITE v2.0
@@ -489,23 +518,40 @@ function voicingToHighlights(frets, rootNoteIdx) {
 }
 
 // ── Audio ────────────────────────────────────────────────────────────
+// audioCtx is created lazily on first user gesture (required by iOS Safari).
+// We always call .resume() before scheduling nodes because iOS suspends
+// the context whenever the page loses focus.
 let audioCtx = null;
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // iOS Safari suspends AudioContext until resumed inside a user-gesture handler
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
 function playNote(midi) {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = getAudioCtx();
   const freq = 440 * Math.pow(2, (midi - 69) / 12);
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
   osc.type = "triangle";
   osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+  gain.gain.setValueAtTime(0.3, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
   osc.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(ctx.destination);
   osc.start();
-  osc.stop(audioCtx.currentTime + 0.8);
+  osc.stop(ctx.currentTime + 0.8);
 }
+
 function playChord(frets) {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // Ensure context is running before scheduling (important for iOS)
+  getAudioCtx();
   frets.forEach((f, s) => {
     if (f < 0) return;
     setTimeout(() => playNote(STD_TUNING[s] + f), s * 40);
@@ -594,8 +640,8 @@ function Fretboard({ highlights = [], showIntervals = true, colorMode = "scale" 
   }
 
   return (
-    <div style={{ overflowX: "auto", overflowY: "hidden", width: "100%", paddingBottom: 8 }}>
-      <svg ref={ref} width={W} height={H} style={{ display: "block", minWidth: W }}>
+    <div style={{ overflowX: "auto", overflowY: "hidden", width: "100%", paddingBottom: 8, WebkitOverflowScrolling: "touch" }}>
+      <svg ref={ref} width={W} height={H} style={{ display: "block", minWidth: W, touchAction: "pan-x" }}>
         <defs>
           <linearGradient id="fbG" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#3a2a12" />
@@ -674,6 +720,16 @@ function Fretboard({ highlights = [], showIntervals = true, colorMode = "scale" 
                 key={`${s}-${f}`}
                 style={{ cursor: "pointer" }}
                 onClick={() => playNote(midi)}
+                onTouchStart={(e) => {
+                  // Prevent ghost mouse-click on iOS and enable audio on touch
+                  e.preventDefault();
+                  playNote(midi);
+                  const rc = ref.current.getBoundingClientRect();
+                  const t = e.touches[0];
+                  setTip({ x: t.clientX - rc.left, y: t.clientY - rc.top - 36, text: `${nn} (${il})` });
+                  // Auto-dismiss tooltip after 1.5 s on touch devices
+                  setTimeout(() => setTip(null), 1500);
+                }}
                 onMouseEnter={(e) => {
                   const rc = ref.current.getBoundingClientRect();
                   setTip({ x: e.clientX - rc.left, y: e.clientY - rc.top - 30, text: `${nn} (${il})` });
@@ -740,6 +796,8 @@ function ChordBox({ voicing, rootNote, selected, onSelect }) {
         alignItems: "center",
         minWidth: 95,
         transition: "all 0.15s",
+        touchAction: "manipulation",
+        WebkitTapHighlightColor: "transparent",
       }}
     >
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
@@ -790,7 +848,9 @@ function Btn({ children, active, onClick, color: cl, small }) {
     <button
       onClick={onClick}
       style={{
-        padding: small ? "4px 10px" : "6px 14px",
+        // min 44px height satisfies Apple HIG & Android touch target guidelines
+        padding: small ? "10px 12px" : "11px 16px",
+        minHeight: 44,
         borderRadius: 6,
         border: `1px solid ${active ? cl || K.accent : K.border}`,
         background: active ? `${cl || K.accent}22` : "transparent",
@@ -801,6 +861,9 @@ function Btn({ children, active, onClick, color: cl, small }) {
         fontWeight: active ? 600 : 400,
         transition: "all 0.15s",
         whiteSpace: "nowrap",
+        // Prevent iOS double-tap zoom and ghost clicks
+        touchAction: "manipulation",
+        WebkitTapHighlightColor: "transparent",
       }}
     >
       {children}
@@ -828,15 +891,20 @@ function Sel({ value, onChange, options, label }) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         style={{
-          padding: "6px 10px",
+          padding: "10px 12px",
+          minHeight: 44,
           borderRadius: 6,
           border: `1px solid ${K.border}`,
           background: K.surface,
           color: K.text,
-          fontSize: 14,
+          fontSize: 16, // iOS zooms in on <16px font-size inputs — keep at 16
           fontFamily: "'JetBrains Mono',monospace",
           cursor: "pointer",
           outline: "none",
+          // iOS native select styling
+          WebkitAppearance: "none",
+          appearance: "none",
+          WebkitTapHighlightColor: "transparent",
         }}
       >
         {options.map((o) => (
@@ -1031,7 +1099,8 @@ function ChordModule() {
               setSelV(null);
             }}
             style={{
-              padding: "8px 12px",
+              padding: "10px 14px",
+              minHeight: 52,
               borderRadius: 8,
               cursor: "pointer",
               border: `1px solid ${selDeg === i ? K.accent : K.border}`,
@@ -1045,6 +1114,8 @@ function ChordModule() {
               alignItems: "center",
               gap: 2,
               transition: "all 0.15s",
+              touchAction: "manipulation",
+              WebkitTapHighlightColor: "transparent",
             }}
           >
             <span style={{ fontSize: 10, color: selDeg === i ? K.accent : K.muted }}>{ch.degree}</span>
@@ -1104,7 +1175,7 @@ function ChordModule() {
       <Pill items={[[K.root, "Root"], [K.third, "3rd"], [K.fifth, "5th"], [K.int, "Other"]]} />
 
       {voicings.length > 0 ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16, maxHeight: 180, overflowY: "auto", padding: 4 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16, maxHeight: 200, overflowY: "auto", padding: 4, WebkitOverflowScrolling: "touch" }}>
           {voicings.map((v, i) => (
             <ChordBox
               key={i}
@@ -1236,11 +1307,8 @@ function MelodicMinorModule() {
 export default function App() {
   const [mod, setMod] = useState("pentatonic");
   return (
+    // Fonts are loaded in index.html <head> — no <link> inside JSX body
     <div style={{ background: K.bg, color: K.text, minHeight: "100vh", fontFamily: "'Instrument Sans','SF Pro',-apple-system,sans-serif" }}>
-      <link
-        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap"
-        rel="stylesheet"
-      />
       <div
         style={{
           padding: "16px 20px",
@@ -1306,9 +1374,11 @@ export default function App() {
         </div>
       </div>
       <div style={{ padding: "16px 20px" }}>
-        {mod === "pentatonic" && <PentatonicModule />}
-        {mod === "chords" && <ChordModule />}
-        {mod === "melodic" && <MelodicMinorModule />}
+        <ErrorBoundary key={mod}>
+          {mod === "pentatonic" && <PentatonicModule />}
+          {mod === "chords" && <ChordModule />}
+          {mod === "melodic" && <MelodicMinorModule />}
+        </ErrorBoundary>
       </div>
       <div style={{ padding: "8px 20px 16px", textAlign: "center" }}>
         <span style={{ color: K.dim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>
