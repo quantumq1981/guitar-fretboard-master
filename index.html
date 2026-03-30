@@ -2,8 +2,43 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- iOS/Android mobile optimisation ─────────────────────────────── -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Fretboard Mastery" />
+    <meta name="theme-color" content="#0f1117" />
+    <!-- Prevent iOS double-tap zoom on interactive elements -->
+    <meta name="format-detection" content="telephone=no" />
     <title>Guitar Fretboard Mastery Suite</title>
+    <!-- Fonts loaded in <head> to avoid FOUT and JSX body placement bug -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Baseline resets for consistent cross-browser mobile rendering */
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        /* Prevent iOS rubber-band scroll on the root */
+        overscroll-behavior: none;
+        /* Safe-area insets for notched iPhones (iOS 11+) */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      /* Prevent callout/selection on interactive SVG elements on iOS */
+      svg { -webkit-user-select: none; user-select: none; }
+      /* Remove iOS tap highlight on all interactive elements */
+      button, select, [role="button"] {
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
